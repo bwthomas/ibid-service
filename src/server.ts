@@ -5,14 +5,15 @@
  * `X-Ibid-Auth` header (SPEC §4 preface). Graceful shutdown on SIGTERM.
  *
  * This file is intentionally thin: it boots config, constructs the shared
- * ibid client, wires metrics + auth, and registers routes. Per-route logic
- * lives in `src/routes/`.
+ * ibid client, wires cache + upstream budget + metrics + auth, and
+ * registers routes. Per-route logic lives in `src/routes/`.
  */
 
 import Fastify from "fastify";
 import { randomUUID } from "node:crypto";
 
 import { makeAuthHook } from "./auth.js";
+import { createServiceCache } from "./cache.js";
 import { loadConfig } from "./config.js";
 import { createServiceIbid } from "./ibid-client.js";
 import { registerExtractRoute } from "./routes/extract.js";
@@ -24,6 +25,7 @@ import {
 } from "./routes/metrics.js";
 import { registerNormalizeRoute } from "./routes/normalize.js";
 import { registerParserRoutes } from "./routes/parsers.js";
+import { createUpstreamBudget } from "./upstream-budget.js";
 
 export async function buildServer(
   configOverride?: Parameters<typeof loadConfig>[0],
@@ -50,24 +52,33 @@ export async function buildServer(
   // `/health` must be unauthenticated so HAProxy probes don't need the secret.
   registerHealthRoute(app, startedAt);
 
-  // Everything below requires auth.
-  const authHook = makeAuthHook(config.authSecret);
-  const client = createServiceIbid(config, {
-    debug: (msg, meta) => app.log.debug(meta ?? {}, msg),
-    info: (msg, meta) => app.log.info(meta ?? {}, msg),
-    warn: (msg, meta) => app.log.warn(meta ?? {}, msg),
-    error: (msg, meta) => app.log.error(meta ?? {}, msg),
+  // Shared resources for the protected routes.
+  const cache = createServiceCache({
+    max: config.cache.max,
+    ttlMs: config.cache.ttlMs,
   });
+  const budget = createUpstreamBudget(config.budget);
+  const authHook = makeAuthHook(config.authSecret);
+  const client = createServiceIbid(
+    config,
+    {
+      debug: (msg, meta) => app.log.debug(meta ?? {}, msg),
+      info: (msg, meta) => app.log.info(meta ?? {}, msg),
+      warn: (msg, meta) => app.log.warn(meta ?? {}, msg),
+      error: (msg, meta) => app.log.error(meta ?? {}, msg),
+    },
+    cache,
+  );
 
   await app.register(async (protectedApp) => {
     protectedApp.addHook("preHandler", authHook);
-    registerExtractRoute(protectedApp, client);
+    registerExtractRoute(protectedApp, client, budget, metrics);
     registerNormalizeRoute(protectedApp);
     registerParserRoutes(protectedApp, client);
-    registerMetricsRoute(protectedApp, metrics);
+    registerMetricsRoute(protectedApp, metrics, cache);
   });
 
-  return { app, config, client, metrics, startedAt };
+  return { app, config, client, metrics, cache, budget, startedAt };
 }
 
 // Entrypoint: only run when executed directly, not when imported by tests.

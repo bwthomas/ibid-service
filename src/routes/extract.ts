@@ -4,7 +4,8 @@
  * Body is an `ExtractInput` from the package SPEC §5.1. Zod validates the
  * discriminated union before handing to `client.extract`. Always returns 200
  * with a full `ExtractionResult` — even for confidence-0 empty runs — per
- * SPEC §5 "no-metadata is not a server error."
+ * SPEC §5 "no-metadata is not a server error." Exceptions are the budget
+ * gate (429) and body-validation failures (400).
  */
 
 import type { FastifyInstance } from "fastify";
@@ -12,6 +13,14 @@ import type { ExtractInput } from "@bwthomas/ibid";
 import { z } from "zod";
 
 import type { IbidClient } from "../ibid-client.js";
+import {
+  recordBudgetDeny,
+  type MetricsBundle,
+} from "./metrics.js";
+import {
+  upstreamForInputKind,
+  type UpstreamBudget,
+} from "../upstream-budget.js";
 
 // `document` kind is intentionally excluded from the HTTP API — a pre-parsed
 // DOM document isn't JSON-serializable. Callers who have parsed HTML should
@@ -40,7 +49,12 @@ const extractInputSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export function registerExtractRoute(app: FastifyInstance, client: IbidClient) {
+export function registerExtractRoute(
+  app: FastifyInstance,
+  client: IbidClient,
+  budget: UpstreamBudget,
+  metrics: MetricsBundle,
+) {
   app.post("/extract", async (req, reply) => {
     const parsed = extractInputSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -48,9 +62,38 @@ export function registerExtractRoute(app: FastifyInstance, client: IbidClient) {
         .code(400)
         .send({ error: "invalid body", issues: parsed.error.issues });
     }
+    const upstream = upstreamForInputKind(parsed.data.kind);
+    if (upstream) {
+      const gate = budget.check(upstream);
+      if (!gate.ok) {
+        recordBudgetDeny(metrics, gate.upstream);
+        return reply
+          .code(429)
+          .header("retry-after", String(gate.retryAfterSec))
+          .send({
+            error: "upstream_budget",
+            upstream: gate.upstream,
+            retryAfterSec: gate.retryAfterSec,
+          });
+      }
+    }
     // Zod's `z.unknown()` infers as optional; cast to the SPEC-typed union
     // after the validation guard, which has already ensured the body shape.
     const result = await client.extract(parsed.data as ExtractInput);
+
+    // Record strategy outcomes for metrics. Every entry in ranStrategies has
+    // either a confidence (ran and produced a result) or a reason (skipped /
+    // errored). Outcome buckets: "success" (confidence > 0), "empty"
+    // (ran, confidence 0), "skipped" (reason present, never ran).
+    for (const r of result.provenance.ranStrategies) {
+      const outcome = r.reason
+        ? "skipped"
+        : r.confidence > 0
+          ? "success"
+          : "empty";
+      metrics.strategyRunsTotal.labels({ strategy: r.name, outcome }).inc();
+    }
+
     req.log.info(
       {
         endpoint: "/extract",

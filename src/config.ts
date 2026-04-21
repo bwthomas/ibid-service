@@ -17,6 +17,18 @@ export interface ServiceConfig {
     citoidEndpoint: string;
     timeoutMs: number;
   };
+  cache: {
+    max: number;
+    ttlMs: number;
+  };
+  budget: {
+    crossref: { capacity: number; refillPerSec: number };
+    citoid: { capacity: number; refillPerSec: number };
+    openlibrary: { capacity: number; refillPerSec: number };
+  };
+  llm:
+    | { provider: "anthropic"; apiKey: string; model: string }
+    | { provider: "none" };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
@@ -26,6 +38,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       "IBID_SERVICE_AUTH must be set to a 16+ character secret before startup",
     );
   }
+  const anthropicKey = env.IBID_LLM_ANTHROPIC_API_KEY;
   return {
     port: Number(env.PORT ?? 3000),
     authSecret,
@@ -43,5 +56,30 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
         "https://en.wikipedia.org/api/rest_v1/data/citation",
       timeoutMs: Number(env.IBID_TIMEOUT_MS ?? 5_000),
     },
+    cache: {
+      max: Number(env.IBID_CACHE_MAX ?? 10_000),
+      ttlMs: Number(env.IBID_CACHE_TTL_MS ?? 24 * 60 * 60 * 1000),
+    },
+    budget: {
+      crossref: {
+        capacity: Number(env.IBID_BUDGET_CROSSREF_CAPACITY ?? 50),
+        refillPerSec: Number(env.IBID_BUDGET_CROSSREF_REFILL_PER_SEC ?? 50),
+      },
+      citoid: {
+        capacity: Number(env.IBID_BUDGET_CITOID_CAPACITY ?? 30),
+        refillPerSec: Number(env.IBID_BUDGET_CITOID_REFILL_PER_SEC ?? 30),
+      },
+      openlibrary: {
+        capacity: Number(env.IBID_BUDGET_OPENLIBRARY_CAPACITY ?? 20),
+        refillPerSec: Number(env.IBID_BUDGET_OPENLIBRARY_REFILL_PER_SEC ?? 20),
+      },
+    },
+    llm: anthropicKey
+      ? {
+          provider: "anthropic",
+          apiKey: anthropicKey,
+          model: env.IBID_LLM_ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001",
+        }
+      : { provider: "none" },
   };
 }

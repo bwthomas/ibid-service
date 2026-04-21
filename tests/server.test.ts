@@ -162,6 +162,66 @@ describe("/extract", () => {
   });
 });
 
+describe("/extract — upstream budget", () => {
+  it("429s with retry-after when the crossref bucket is empty", async () => {
+    process.env.IBID_BUDGET_CROSSREF_CAPACITY = "1";
+    process.env.IBID_BUDGET_CROSSREF_REFILL_PER_SEC = "0.001"; // no meaningful refill during the test
+    const app = await makeApp();
+    // First DOI call consumes the single token.
+    const first = await app.inject({
+      method: "POST",
+      url: "/extract",
+      headers: {
+        "content-type": "application/json",
+        "x-ibid-auth": TEST_SECRET,
+      },
+      payload: { kind: "doi", doi: "10.1000/fake" },
+    });
+    expect(first.statusCode).toBe(200);
+    // Second call within the same second → 429.
+    const second = await app.inject({
+      method: "POST",
+      url: "/extract",
+      headers: {
+        "content-type": "application/json",
+        "x-ibid-auth": TEST_SECRET,
+      },
+      payload: { kind: "doi", doi: "10.1000/fake2" },
+    });
+    expect(second.statusCode).toBe(429);
+    const body = second.json();
+    expect(body.error).toBe("upstream_budget");
+    expect(body.upstream).toBe("crossref");
+    expect(second.headers["retry-after"]).toBeDefined();
+    delete process.env.IBID_BUDGET_CROSSREF_CAPACITY;
+    delete process.env.IBID_BUDGET_CROSSREF_REFILL_PER_SEC;
+    await app.close();
+  });
+
+  it("does not gate html-kind inputs (no dedicated upstream)", async () => {
+    process.env.IBID_BUDGET_CITOID_CAPACITY = "1";
+    process.env.IBID_BUDGET_CITOID_REFILL_PER_SEC = "0.001";
+    const app = await makeApp();
+    // Two html calls in a row — neither consumes the citoid bucket because
+    // the gate only fires for url/doi/isbn inputs.
+    for (let i = 0; i < 3; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/extract",
+        headers: {
+          "content-type": "application/json",
+          "x-ibid-auth": TEST_SECRET,
+        },
+        payload: { kind: "html", html: "<html></html>" },
+      });
+      expect(res.statusCode).toBe(200);
+    }
+    delete process.env.IBID_BUDGET_CITOID_CAPACITY;
+    delete process.env.IBID_BUDGET_CITOID_REFILL_PER_SEC;
+    await app.close();
+  });
+});
+
 describe("/metrics", () => {
   it("exposes Prometheus text after at least one request", async () => {
     const app = await makeApp();
@@ -191,6 +251,27 @@ describe("/metrics", () => {
     const app = await makeApp();
     const res = await app.inject({ method: "GET", url: "/metrics" });
     expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+});
+
+describe("LLM adapter wiring", () => {
+  it("registers the Llm strategy when IBID_LLM_ANTHROPIC_API_KEY is set", async () => {
+    process.env.TEST_IBID_SERVICE_AUTH = TEST_SECRET;
+    process.env.IBID_LLM_ANTHROPIC_API_KEY = "test-key";
+    const { buildServer } = await import("../src/server.js");
+    const { client, app } = await buildServer();
+    expect(client.listStrategies().map((s) => s.name)).toContain("Llm");
+    delete process.env.IBID_LLM_ANTHROPIC_API_KEY;
+    await app.close();
+  });
+
+  it("does not register Llm strategy when no key is set", async () => {
+    process.env.TEST_IBID_SERVICE_AUTH = TEST_SECRET;
+    delete process.env.IBID_LLM_ANTHROPIC_API_KEY;
+    const { buildServer } = await import("../src/server.js");
+    const { client, app } = await buildServer();
+    expect(client.listStrategies().map((s) => s.name)).not.toContain("Llm");
     await app.close();
   });
 });
