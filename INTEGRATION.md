@@ -165,7 +165,51 @@ Health probes should hit `GET /health` (no auth required).
 - New endpoints, new routing behavior, auth changes → bump this service's
   own version; SPEC.md should reflect the new shape.
 
-## 9. Deferred rollout pattern (mirror-mode)
+## 9. Multi-candidate search (`POST /lookup-candidates`)
+
+Unlike `/extract`, which returns a single best answer, `/lookup-candidates`
+returns a list of plausible candidates sorted by confidence. Useful when
+the consumer wants to present a choose-from-list UI for title-only
+searches (e.g., a user types a book or article title and picks from
+matches).
+
+Request body:
+
+```json
+{
+  "kind": "bookTitle" | "articleTitle",
+  "title": "required",
+  "author": "optional",
+  "maxResults": 10
+}
+```
+
+Response:
+
+```json
+{
+  "candidates": [
+    {
+      "csl": {...},
+      "confidence": 75,
+      "strategyName": "GoogleBooks",
+      "fieldConfidence": {...},
+      "provenance": {...},
+      "warnings": []
+    },
+    ...
+  ]
+}
+```
+
+- Book-title queries route through configured
+  `IBID_ISBN_*` adapters' `searchByTitle` methods (if any).
+- Article-title queries route through any consumer-supplied
+  `ArticleSearchAdapter` instances (see `@bwthomas/ibid`), with a
+  built-in CrossRef freetext adapter (<https://api.crossref.org/works>)
+  as the fallback.
+
+## 10. Deferred rollout pattern (mirror-mode)
 
 When migrating consumer code from its own citation logic to this service,
 the recommended pattern (see `SPEC.md` §10.5):

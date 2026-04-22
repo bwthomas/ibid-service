@@ -18,6 +18,7 @@ import { loadConfig } from "./config.js";
 import { createServiceIbid } from "./ibid-client.js";
 import { registerExtractRoute } from "./routes/extract.js";
 import { registerHealthRoute } from "./routes/health.js";
+import { registerLookupCandidatesRoute } from "./routes/lookup-candidates.js";
 import {
   createMetrics,
   installMetricsHooks,
@@ -73,6 +74,7 @@ export async function buildServer(
   await app.register(async (protectedApp) => {
     protectedApp.addHook("preHandler", authHook);
     registerExtractRoute(protectedApp, client, budget, metrics);
+    registerLookupCandidatesRoute(protectedApp, client);
     registerNormalizeRoute(protectedApp);
     registerParserRoutes(protectedApp, client);
     registerMetricsRoute(protectedApp, metrics, cache);

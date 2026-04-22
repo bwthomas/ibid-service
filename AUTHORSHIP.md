@@ -24,6 +24,22 @@ Detailed provenance records — including sources consulted, license-boundary re
 
 Implementation has not begun. When it begins, an entry will be appended here naming the implementer, date, and commit range.
 
+## 2026-04-22 — `/lookup-candidates` route
+
+- Actor: Blake Thomas, with AI assistance (Anthropic Claude).
+- Added `POST /lookup-candidates` at `src/routes/lookup-candidates.ts`,
+  delegating to `IbidClient.lookupCandidates()` (available in
+  `@bwthomas/ibid` 0.5.0+). Route validates the request body with a
+  Zod discriminated union over `bookTitle` / `articleTitle` kinds;
+  returns `{candidates: ExtractionResult[]}` on 200.
+- Service bumped to 0.3.0. ibid dep bumped to 0.5.0 (still via the
+  `file:../ibid` local pointer until Blake publishes 0.5.0).
+- INTEGRATION.md gains a §9 documenting request/response shape and
+  when to use this endpoint over `/extract`.
+- Tests: 3 new in `tests/lookup-candidates.test.ts` verifying 401
+  without auth, 400 on invalid body, 200 with empty candidates when
+  no adapters configured. Full suite 40/40 pass.
+
 ## 2026-04-22 — Translation-server plumbing
 
 - Actor: Blake Thomas, with AI assistance (Anthropic Claude).
