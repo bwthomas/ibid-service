@@ -18,6 +18,22 @@ export interface ServiceConfig {
     /** Optional self-hosted Zotero translation-server endpoint. Empty → unset. */
     translationServerEndpoint: string;
     timeoutMs: number;
+    /**
+     * Per-strategy overrides passed through to ibid's `strategyOverrides`.
+     * Env-driven; each entry keyed by strategy name. Default: empty.
+     *
+     * Env-var pattern for each strategy:
+     *   IBID_STRATEGY_<NAME>_ENABLED=false
+     *   IBID_STRATEGY_<NAME>_FALLBACK=true
+     *   IBID_STRATEGY_<NAME>_MIN_CURRENT_BEST_CONFIDENCE=40
+     *
+     * e.g. `IBID_STRATEGY_CITOID_URL_FALLBACK=true` to move CitoidUrl
+     * into ibid's fallback tier (see ibid SPEC §8.1.1.1 for mechanism).
+     */
+    strategyOverrides: Record<
+      string,
+      { enabled?: boolean; fallback?: boolean; minCurrentBestConfidence?: number }
+    >;
   };
   cache: {
     max: number;
@@ -74,6 +90,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
         "https://en.wikipedia.org/api/rest_v1/data/citation",
       translationServerEndpoint: env.IBID_TRANSLATION_SERVER_URL ?? "",
       timeoutMs: Number(env.IBID_TIMEOUT_MS ?? 5_000),
+      strategyOverrides: parseStrategyOverrides(env),
     },
     cache: {
       max: Number(env.IBID_CACHE_MAX ?? 10_000),
@@ -114,4 +131,66 @@ function numOrUndef(raw: string | undefined): number | undefined {
   if (raw === undefined || raw === "") return undefined;
   const n = Number(raw);
   return Number.isFinite(n) ? n : undefined;
+}
+
+function boolOrUndef(raw: string | undefined): boolean | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  const v = raw.toLowerCase().trim();
+  if (v === "true" || v === "1" || v === "yes") return true;
+  if (v === "false" || v === "0" || v === "no") return false;
+  return undefined;
+}
+
+/**
+ * Parse `IBID_STRATEGY_<NAME>_<FIELD>` env vars into a
+ * `strategyOverrides` dictionary. Strategy name is the literal ibid
+ * strategy `name`; env var token converts `CitoidUrl` ↔ `CITOID_URL`.
+ *
+ * Recognized suffixes: `_ENABLED`, `_FALLBACK`, `_MIN_CURRENT_BEST_CONFIDENCE`.
+ */
+function parseStrategyOverrides(
+  env: NodeJS.ProcessEnv,
+): Record<
+  string,
+  { enabled?: boolean; fallback?: boolean; minCurrentBestConfidence?: number }
+> {
+  // Known built-in strategy names → ENV token form.
+  const known = [
+    "CrossRefDoi",
+    "DoiInHtml",
+    "Highwire",
+    "CitoidDoi",
+    "TranslationServer",
+    "CitoidUrl",
+    "ImageExtractor",
+    "SchemaOrgLdJson",
+    "SchemaOrgMicrodata",
+    "MetaTagFallback",
+    "IsbnAdapterChain",
+    "OpenLibraryIsbn",
+    "UrlFallback",
+    "Llm",
+  ] as const;
+  const out: Record<
+    string,
+    { enabled?: boolean; fallback?: boolean; minCurrentBestConfidence?: number }
+  > = {};
+  for (const name of known) {
+    const token = name
+      .replace(/([A-Z])([A-Z][a-z])/g, "$1_$2")
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .toUpperCase();
+    const enabled = boolOrUndef(env[`IBID_STRATEGY_${token}_ENABLED`]);
+    const fallback = boolOrUndef(env[`IBID_STRATEGY_${token}_FALLBACK`]);
+    const minConf = numOrUndef(
+      env[`IBID_STRATEGY_${token}_MIN_CURRENT_BEST_CONFIDENCE`],
+    );
+    if (enabled !== undefined || fallback !== undefined || minConf !== undefined) {
+      out[name] = {};
+      if (enabled !== undefined) out[name].enabled = enabled;
+      if (fallback !== undefined) out[name].fallback = fallback;
+      if (minConf !== undefined) out[name].minCurrentBestConfidence = minConf;
+    }
+  }
+  return out;
 }

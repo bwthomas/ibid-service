@@ -80,5 +80,6 @@ export function createServiceIbid(
     citoidEndpoint: config.ibid.citoidEndpoint,
     translationServerEndpoint:
       config.ibid.translationServerEndpoint || undefined,
+    strategyOverrides: config.ibid.strategyOverrides,
   });
 }
