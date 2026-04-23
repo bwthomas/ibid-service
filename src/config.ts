@@ -55,15 +55,29 @@ export interface ServiceConfig {
          * `undefined` → the library's defaults in
          * `@bwthomas/ibid/article-crossref-freetext`.
          */
-        freetextRescue?: {
-          minScore?: number;
-          minTitleOverlap?: number;
-          maxCandidates?: number;
-          maxTokens?: number;
-          temperature?: number;
-        };
+        freetextRescue?: FreetextRescueConfig;
+      }
+    | {
+        provider: "bedrock";
+        region: string;
+        modelId: string;
+        /** IAM credentials — picked up from AWS_* env vars by default. */
+        accessKeyId: string;
+        secretAccessKey: string;
+        /** Optional; set when credentials are a temporary STS session. */
+        sessionToken?: string;
+        /** Same shape as the Anthropic-direct variant. */
+        freetextRescue?: FreetextRescueConfig;
       }
     | { provider: "none" };
+}
+
+export interface FreetextRescueConfig {
+  minScore?: number;
+  minTitleOverlap?: number;
+  maxCandidates?: number;
+  maxTokens?: number;
+  temperature?: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
@@ -73,7 +87,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       "IBID_SERVICE_AUTH must be set to a 16+ character secret before startup",
     );
   }
-  const anthropicKey = env.IBID_LLM_ANTHROPIC_API_KEY;
+  const llm = resolveLlmConfig(env);
   return {
     port: Number(env.PORT ?? 3000),
     authSecret,
@@ -112,21 +126,73 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
         refillPerSec: Number(env.IBID_BUDGET_OPENLIBRARY_REFILL_PER_SEC ?? 20),
       },
     },
-    llm: anthropicKey
-      ? {
-          provider: "anthropic",
-          apiKey: anthropicKey,
-          model: env.IBID_LLM_ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001",
-          freetextRescue: {
-            minScore: numOrUndef(env.IBID_LLM_FREETEXT_MIN_SCORE),
-            minTitleOverlap: numOrUndef(env.IBID_LLM_FREETEXT_MIN_OVERLAP),
-            maxCandidates: numOrUndef(env.IBID_LLM_FREETEXT_MAX_CANDIDATES),
-            maxTokens: numOrUndef(env.IBID_LLM_FREETEXT_MAX_TOKENS),
-            temperature: numOrUndef(env.IBID_LLM_FREETEXT_TEMPERATURE),
-          },
-        }
-      : { provider: "none" },
+    llm,
   };
+}
+
+/**
+ * Pick the LLM provider at boot time. Precedence:
+ *   1. Bedrock — if `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are
+ *      both set. This matches the AWS SDK convention and covers
+ *      AWS-native deployments (the common enterprise path).
+ *   2. Anthropic direct — if `IBID_LLM_ANTHROPIC_API_KEY` is set.
+ *   3. None — no LLM wiring; `CrossRefFreetext` rescue is skipped.
+ *
+ * When both Bedrock AND Anthropic creds are present, Bedrock wins and
+ * a warning goes to stderr so the operator knows the Anthropic key is
+ * being ignored. Silent precedence would be worse.
+ */
+function resolveLlmConfig(
+  env: NodeJS.ProcessEnv,
+): ServiceConfig["llm"] {
+  const freetextRescue: FreetextRescueConfig = {
+    minScore: numOrUndef(env.IBID_LLM_FREETEXT_MIN_SCORE),
+    minTitleOverlap: numOrUndef(env.IBID_LLM_FREETEXT_MIN_OVERLAP),
+    maxCandidates: numOrUndef(env.IBID_LLM_FREETEXT_MAX_CANDIDATES),
+    maxTokens: numOrUndef(env.IBID_LLM_FREETEXT_MAX_TOKENS),
+    temperature: numOrUndef(env.IBID_LLM_FREETEXT_TEMPERATURE),
+  };
+
+  const hasBedrock =
+    !!env.AWS_ACCESS_KEY_ID && !!env.AWS_SECRET_ACCESS_KEY;
+  const anthropicKey = env.IBID_LLM_ANTHROPIC_API_KEY;
+
+  if (hasBedrock && anthropicKey) {
+    // Non-fatal — we pick Bedrock but tell the operator we're ignoring
+    // the Anthropic key so misconfigurations don't hide.
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[ibid-service config] Both Bedrock (AWS creds) and Anthropic " +
+        "(IBID_LLM_ANTHROPIC_API_KEY) are configured. Using Bedrock; " +
+        "unset one to silence this warning.",
+    );
+  }
+  if (hasBedrock) {
+    return {
+      provider: "bedrock",
+      region:
+        env.IBID_LLM_BEDROCK_REGION ??
+        env.AWS_REGION ??
+        env.AWS_DEFAULT_REGION ??
+        "us-east-1",
+      modelId:
+        env.IBID_LLM_BEDROCK_MODEL ??
+        "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+      accessKeyId: env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: env.AWS_SECRET_ACCESS_KEY!,
+      sessionToken: env.AWS_SESSION_TOKEN,
+      freetextRescue,
+    };
+  }
+  if (anthropicKey) {
+    return {
+      provider: "anthropic",
+      apiKey: anthropicKey,
+      model: env.IBID_LLM_ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001",
+      freetextRescue,
+    };
+  }
+  return { provider: "none" };
 }
 
 function numOrUndef(raw: string | undefined): number | undefined {

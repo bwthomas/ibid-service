@@ -23,6 +23,90 @@ describe("loadConfig — IBID_CACHE_ENABLED", () => {
   });
 });
 
+describe("loadConfig — LLM provider selection", () => {
+  it("provider=none when no creds present", () => {
+    const cfg = loadConfig(env());
+    expect(cfg.llm.provider).toBe("none");
+  });
+
+  it("picks Anthropic when only IBID_LLM_ANTHROPIC_API_KEY set", () => {
+    const cfg = loadConfig(env({ IBID_LLM_ANTHROPIC_API_KEY: "sk-ant-test" }));
+    if (cfg.llm.provider !== "anthropic") throw new Error("wrong provider");
+    expect(cfg.llm.apiKey).toBe("sk-ant-test");
+    expect(cfg.llm.model).toBe("claude-haiku-4-5-20251001");
+  });
+
+  it("picks Bedrock when AWS creds set (both access+secret)", () => {
+    const cfg = loadConfig(env({
+      AWS_ACCESS_KEY_ID: "AKIA-test",
+      AWS_SECRET_ACCESS_KEY: "secret-test",
+      AWS_REGION: "us-west-2",
+    }));
+    if (cfg.llm.provider !== "bedrock") throw new Error("wrong provider");
+    expect(cfg.llm.region).toBe("us-west-2");
+    expect(cfg.llm.accessKeyId).toBe("AKIA-test");
+    expect(cfg.llm.modelId).toBe("us.anthropic.claude-haiku-4-5-20251001-v1:0");
+    expect(cfg.llm.sessionToken).toBeUndefined();
+  });
+
+  it("honors IBID_LLM_BEDROCK_REGION over AWS_REGION", () => {
+    const cfg = loadConfig(env({
+      AWS_ACCESS_KEY_ID: "AKIA-test",
+      AWS_SECRET_ACCESS_KEY: "secret-test",
+      AWS_REGION: "us-east-1",
+      IBID_LLM_BEDROCK_REGION: "us-west-2",
+    }));
+    if (cfg.llm.provider !== "bedrock") throw new Error("wrong provider");
+    expect(cfg.llm.region).toBe("us-west-2");
+  });
+
+  it("honors IBID_LLM_BEDROCK_MODEL override (e.g. Nova Lite)", () => {
+    const cfg = loadConfig(env({
+      AWS_ACCESS_KEY_ID: "AKIA-test",
+      AWS_SECRET_ACCESS_KEY: "secret-test",
+      IBID_LLM_BEDROCK_MODEL: "us.amazon.nova-lite-v1:0",
+    }));
+    if (cfg.llm.provider !== "bedrock") throw new Error("wrong provider");
+    expect(cfg.llm.modelId).toBe("us.amazon.nova-lite-v1:0");
+  });
+
+  it("passes through AWS_SESSION_TOKEN for STS credentials", () => {
+    const cfg = loadConfig(env({
+      AWS_ACCESS_KEY_ID: "AKIA-test",
+      AWS_SECRET_ACCESS_KEY: "secret-test",
+      AWS_SESSION_TOKEN: "sts-session-token",
+    }));
+    if (cfg.llm.provider !== "bedrock") throw new Error("wrong provider");
+    expect(cfg.llm.sessionToken).toBe("sts-session-token");
+  });
+
+  it("Bedrock wins when both Bedrock and Anthropic configured", () => {
+    const cfg = loadConfig(env({
+      AWS_ACCESS_KEY_ID: "AKIA-test",
+      AWS_SECRET_ACCESS_KEY: "secret-test",
+      IBID_LLM_ANTHROPIC_API_KEY: "sk-ant-also-set",
+    }));
+    expect(cfg.llm.provider).toBe("bedrock");
+  });
+
+  it("ignores half-set AWS creds (only access key, no secret)", () => {
+    const cfg = loadConfig(env({ AWS_ACCESS_KEY_ID: "AKIA-test" }));
+    expect(cfg.llm.provider).toBe("none");
+  });
+
+  it("freetextRescue tuning env vars flow through to the picked provider", () => {
+    const cfg = loadConfig(env({
+      AWS_ACCESS_KEY_ID: "AKIA-test",
+      AWS_SECRET_ACCESS_KEY: "secret-test",
+      IBID_LLM_FREETEXT_MIN_SCORE: "42",
+      IBID_LLM_FREETEXT_MAX_TOKENS: "256",
+    }));
+    if (cfg.llm.provider !== "bedrock") throw new Error("wrong provider");
+    expect(cfg.llm.freetextRescue?.minScore).toBe(42);
+    expect(cfg.llm.freetextRescue?.maxTokens).toBe(256);
+  });
+});
+
 describe("loadConfig — strategyOverrides", () => {
   it("is empty by default", () => {
     const cfg = loadConfig(env());

@@ -241,8 +241,14 @@ All configuration via environment variables. No config file.
 | `IBID_LOG_LEVEL` | `info` | `trace|debug|info|warn|error|fatal` |
 | `IBID_CITOID_ENDPOINT` | `https://en.wikipedia.org/api/rest_v1/data/citation` | Override Citoid |
 | `IBID_CROSSREF_ENDPOINT` | `https://api.crossref.org` | Override CrossRef |
-| `IBID_LLM_ANTHROPIC_API_KEY` | unset | If set, `Llm` strategy registered |
-| `IBID_LLM_ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` | Cheap model default |
+| `IBID_LLM_ANTHROPIC_API_KEY` | unset | If set (and no AWS creds), register the Anthropic-direct `Llm` adapter |
+| `IBID_LLM_ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` | Anthropic-direct default model |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | unset | If both set, register the AWS Bedrock `Llm` adapter (takes precedence over Anthropic when both are configured) |
+| `AWS_REGION` / `AWS_DEFAULT_REGION` | `us-east-1` (fallback) | Bedrock region |
+| `IBID_LLM_BEDROCK_REGION` | unset | Override the AWS region for Bedrock only (leaves other AWS calls alone) |
+| `IBID_LLM_BEDROCK_MODEL` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Bedrock model ID (cross-region profile) |
+| `AWS_SESSION_TOKEN` | unset | Optional STS session token; passed through to the Bedrock adapter |
+| `IBID_LLM_FREETEXT_MIN_SCORE` / `_MIN_OVERLAP` / `_MAX_CANDIDATES` / `_MAX_TOKENS` / `_TEMPERATURE` | unset | Tune the `CrossRefFreetext` LLM rescue thresholds (see ibid SPEC §8.1.2) |
 
 Missing required env var → fail-fast at startup with a clear error (not a generic `undefined`).
 
