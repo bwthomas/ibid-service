@@ -162,13 +162,15 @@ Commit: 2-3 commits (Dockerfile, compose, INTEGRATION.md).
 
 Out of scope for the initial service build. When triggered:
 
-### 6.1 Ruby client
-- New Ruby class `Citation::IbidServiceClient` — thin HTTParty wrapper.
-- Method parity: `extract_from_url`, `extract_from_doi`, `parse_ris`, `upgrade_bib`, `normalize`, `parse_authors`, `parse_date`.
-- Mirror-mode flag in config — when on, Ruby calls both its old path and `IbidServiceClient` and logs divergence.
+### 6.1 Ruby client (host-app integration, out of scope for the service itself)
+- A thin HTTParty wrapper in the host app — one class per method.
+- Method parity with the service surface: `extract_from_url`, `extract_from_doi`,
+  `parse_ris`, `upgrade_bib`, `normalize`, `parse_authors`, `parse_date`.
+- Mirror-mode flag — when on, the host app calls both its legacy pipeline
+  and the ibid-service client, logging divergence for rollout observability.
 
-### 6.2 Java client
-- New Java class `com.host-app.citation.IbidServiceClient` — wraps `HttpClient`.
+### 6.2 Java client (host-app integration, out of scope for the service itself)
+- Analogous thin Apache HttpClient wrapper.
 - Methods: `extractFromDoi`, `extractFromUrl`, `normalize`.
 
 ### 6.3 Divergence logger

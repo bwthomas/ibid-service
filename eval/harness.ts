@@ -194,7 +194,7 @@ function buildLlm(
 
 // --------- Ibid clients ----------------------------------------------
 
-const USER_AGENT = "ibid-service-eval/1.0 (blake@example.com)";
+const USER_AGENT = "ibid-service-eval/1.0 (eval@example.com)";
 
 function buildIbidSolo() {
   return createIbid({

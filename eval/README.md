@@ -6,7 +6,7 @@ lookup, RIS parsing, CrossRef freetext search, URL extraction, legacy-bib
 upgrade). For each op, runs up to three pipelines per LLM variant:
 
 1. **baseline** — the host application's pre-ibid pipeline (e.g.
-   a host app's legacy pipes). Opt-in via a `BaselineAdapter` module.
+   a host app's legacy extraction pipeline). Opt-in via a `BaselineAdapter` module.
 2. **ibid solo** — library defaults, no LLM, no host fallbacks.
 3. **ibid post** — ibid primary with the variant's LLM, baseline
    fallback when a method is exposed for the op.
@@ -46,7 +46,7 @@ See `eval/config-schema.ts` (Zod). Keys:
 
 ## BaselineAdapter
 
-Host apps (e.g. a host app) ship their own adapter implementing the
+Host apps (e.g., a host app) ship their own adapter implementing the
 `BaselineAdapter` interface (`eval/baseline-adapter.ts`). Factory must
 be the default export:
 
@@ -56,7 +56,7 @@ import type { BaselineAdapter } from "/path/to/ibid-service/eval/baseline-adapte
 
 export default function(): BaselineAdapter {
   return {
-    name: "host-app",
+    name: "host-baseline",
     async doiLookup(doi) { /* ... */ },
     async extractUrl(url) { /* ... */ },
     parseRis(ris) { /* ... */ },

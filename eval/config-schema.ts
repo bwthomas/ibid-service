@@ -1,7 +1,7 @@
 /**
  * Config schema + loader for the eval harness. Zod shape mirrors the
- * JSON files under `eval/configs/` and the host-side
- * `website/env/development/citation-eval/host.config.json`.
+ * JSON files under `eval/configs/` or a host-app-side
+ * override.
  *
  * Paths in the config file are resolved relative to the config file's
  * own directory. Absolute paths are kept as-is.
@@ -33,7 +33,7 @@ export const VariantSchema = z.object({
    * Optional prompt overrides. Keys are ibid surface names
    * ("urlExtraction", "freetextRescue"). Values are system-prompt
    * strings or `null` to keep the library defaults. Not wired through
-   * yet — reserved for host-side prompt tuning.
+   * yet — reserved for host-app prompt tuning.
    */
   systemPromptOverrides: z
     .record(z.union([z.string(), z.null()]))
