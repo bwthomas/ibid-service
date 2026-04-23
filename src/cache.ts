@@ -47,3 +47,20 @@ export function createServiceCache(options: {
     size: () => lru.size,
   };
 }
+
+/**
+ * No-op ServiceCache used when `IBID_CACHE_ENABLED=false` at the env
+ * layer. Returns null on every get, drops every set, reports size 0
+ * and 0/0 hits/misses. Lets operators disable a configured cache
+ * backend during incidents without a redeploy.
+ */
+export function createNoopServiceCache(): ServiceCache {
+  return {
+    async get(): Promise<CachedResult | null> {
+      return null;
+    },
+    async set(): Promise<void> {},
+    counters: () => ({ hits: 0, misses: 0 }),
+    size: () => 0,
+  };
+}

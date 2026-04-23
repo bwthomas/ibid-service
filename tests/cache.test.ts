@@ -1,7 +1,23 @@
 import { describe, it, expect } from "vitest";
 
-import { createServiceCache } from "../src/cache.js";
+import { createServiceCache, createNoopServiceCache } from "../src/cache.js";
 import type { CachedResult } from "@bwthomas/ibid";
+
+describe("createNoopServiceCache", () => {
+  it("returns null on get and silently drops sets", async () => {
+    const c = createNoopServiceCache();
+    await c.set("k", { csl: {}, confidence: 1 } as unknown as CachedResult);
+    expect(await c.get("k")).toBeNull();
+  });
+
+  it("reports size 0 and 0/0 counters", async () => {
+    const c = createNoopServiceCache();
+    await c.set("k", {} as unknown as CachedResult);
+    await c.get("k");
+    expect(c.size()).toBe(0);
+    expect(c.counters()).toEqual({ hits: 0, misses: 0 });
+  });
+});
 
 function fixture(over: Partial<CachedResult> = {}): CachedResult {
   return {

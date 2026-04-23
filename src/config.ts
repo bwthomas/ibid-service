@@ -36,6 +36,7 @@ export interface ServiceConfig {
     >;
   };
   cache: {
+    enabled: boolean;
     max: number;
     ttlMs: number;
   };
@@ -93,6 +94,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       strategyOverrides: parseStrategyOverrides(env),
     },
     cache: {
+      enabled: boolOrUndef(env.IBID_CACHE_ENABLED) ?? true,
       max: Number(env.IBID_CACHE_MAX ?? 10_000),
       ttlMs: Number(env.IBID_CACHE_TTL_MS ?? 24 * 60 * 60 * 1000),
     },

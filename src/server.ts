@@ -13,7 +13,7 @@ import Fastify from "fastify";
 import { randomUUID } from "node:crypto";
 
 import { makeAuthHook } from "./auth.js";
-import { createServiceCache } from "./cache.js";
+import { createServiceCache, createNoopServiceCache } from "./cache.js";
 import { loadConfig } from "./config.js";
 import { createServiceIbid } from "./ibid-client.js";
 import { registerExtractRoute } from "./routes/extract.js";
@@ -54,10 +54,12 @@ export async function buildServer(
   registerHealthRoute(app, startedAt);
 
   // Shared resources for the protected routes.
-  const cache = createServiceCache({
-    max: config.cache.max,
-    ttlMs: config.cache.ttlMs,
-  });
+  const cache = config.cache.enabled
+    ? createServiceCache({
+        max: config.cache.max,
+        ttlMs: config.cache.ttlMs,
+      })
+    : createNoopServiceCache();
   const budget = createUpstreamBudget(config.budget);
   const authHook = makeAuthHook(config.authSecret);
   const client = createServiceIbid(

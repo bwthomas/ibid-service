@@ -8,6 +8,21 @@ function env(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   } as NodeJS.ProcessEnv;
 }
 
+describe("loadConfig — IBID_CACHE_ENABLED", () => {
+  it("defaults to true when unset", () => {
+    const cfg = loadConfig(env());
+    expect(cfg.cache.enabled).toBe(true);
+  });
+  it("false when IBID_CACHE_ENABLED=false", () => {
+    const cfg = loadConfig(env({ IBID_CACHE_ENABLED: "false" }));
+    expect(cfg.cache.enabled).toBe(false);
+  });
+  it("true when IBID_CACHE_ENABLED=true", () => {
+    const cfg = loadConfig(env({ IBID_CACHE_ENABLED: "true" }));
+    expect(cfg.cache.enabled).toBe(true);
+  });
+});
+
 describe("loadConfig — strategyOverrides", () => {
   it("is empty by default", () => {
     const cfg = loadConfig(env());
